@@ -29,10 +29,15 @@ class NatashaPreprocessor:
         if not isinstance(text, str):
             raise TypeError("text must be a string")
 
+        if not text:
+            return []
+        
         doc = Doc(text)
         doc.segment(self._segmenter)
         doc.tag_morph(self._morph_tagger)
-        doc.lemmatize(self._morph_vocab)
+        
+        for token in doc.tokens:
+            token.lemmatize(self._morph_vocab)
 
         return [
             Token(

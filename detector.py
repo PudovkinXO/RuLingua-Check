@@ -92,7 +92,10 @@ class RuleBasedDetector:
         doc = Doc(text)
         doc.segment(self._segmenter)
         doc.tag_morph(self._morph_tagger)
-        doc.lemmatize(self._morph_vocab)
+
+        for token in doc.tokens:
+            token.lemmatize(self._morph_vocab)
+            
         tokens = [
             Token(
                 text=token.text,
@@ -112,6 +115,8 @@ class RuleBasedDetector:
             doc.parse_syntax(self._syntax_parser)
             findings.extend(self._syntax_patterns(doc, tokens, deferred))
 
+        findings = self._deduplicate_overlapping(findings)
+
         visible = [
             finding
             for finding in findings
@@ -122,6 +127,22 @@ class RuleBasedDetector:
             )
         ]
         return sorted(visible, key=lambda item: (-item.priority, item.start, item.stop))
+
+    @staticmethod
+    def _deduplicate_overlapping(findings: list[Finding]) -> list[Finding]:
+        ordered = sorted(
+            findings,
+            key=lambda finding: (-finding.priority, -(finding.stop - finding.start)),
+        )
+        kept: list[Finding] = []
+        for finding in ordered:
+            overlaps_existing = any(
+                finding.start < other.stop and finding.stop > other.start
+                for other in kept
+            )
+            if not overlaps_existing:
+                kept.append(finding)
+        return kept
 
     def _layer_one(self, tokens: list[Token]) -> list[Finding]:
         findings: list[Finding] = []
@@ -226,7 +247,7 @@ class RuleBasedDetector:
             )
             if (
                 has_internal_dependency
-                and all(token.pos == "NOUN" and "Case=Gen" in str(token.feats or "") for token in group)
+                and all(token.pos == "NOUN" and token.feats.get('Case') == 'Gen' for token in group)
             ):
                 findings.append(
                     self._finding(
@@ -262,7 +283,7 @@ class RuleBasedDetector:
             text=text,
             start=start,
             stop=stop,
-            category=data.get("категория", "не_указано"),
+            category=data.get("категория") or data.get("тип") or "не_указано",
             confidence=confidence,
             false_positive_risk=risk,
             priority=priority,
